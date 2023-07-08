@@ -1,6 +1,8 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <sstream>
+#include <stdexcept>
 #include <fstream>
 
 namespace skyue {
@@ -14,6 +16,7 @@ namespace skyue {
         // Define a struct for a JSON object
         struct JSONObject {
             JSONKeyValuePair pairs;
+            std::map<std::string, JSONArray> objects;
         };
 
         // Define a class for a JSON object
@@ -46,6 +49,7 @@ namespace skyue {
                 return result;
             }
 
+
             // Save the JSON object to a file
             void json_to_file(const std::string& filename) const {
                 std::ofstream file(filename);
@@ -53,14 +57,19 @@ namespace skyue {
                 if (file.is_open()) {
                     std::string indent(indent_spaces, ' ');
                     file << "{\n";
+                    bool first_pair = true;
+
                     for (const auto& pair : object.pairs) {
-                        file << indent << "\"" << pair.first << "\": \"" << pair.second << "\",\n";
+                        if (!first_pair) {
+                            file << ",\n";
+                        }
+                        else {
+                            first_pair = false;
+                        }
+                        file << indent << "\"" << pair.first << "\": \"" << pair.second << "\"";
                     }
-                    if (!object.pairs.empty()) {
-                        file.seekp(-2, std::ios_base::end);
-                        file << "\n";
-                    }
-                    file << "}";
+
+                    file << "\n}";
                     file.close();
                 }
             }
@@ -70,11 +79,175 @@ namespace skyue {
                 indent_spaces = spaces;
             }
 
+            /*
+            The skip_whitespace function skips all whitespace characters in the json string,
+            starting from position pos. This function uses a while loop to check each character,
+            starting from the current position, and increases the position until the
+            current character is a whitespace. After the function is completed, pos points to
+            the first non-whitespace character in the json string or to the end of the string
+            if all characters were whitespace.
+            */
+            void skip_whitespace(const std::string& json, size_t& pos) {
+                while (pos < json.size() && std::isspace(json[pos])) {
+                    pos++;
+                }
+            }
+
+            std::string parse_string(const std::string& json, size_t& pos) {
+                std::string result;
+
+                if (json[pos] == '"') {
+                    pos++;
+
+                    while (pos < json.size() && json[pos] != '"') {
+                        if (json[pos] == '\\') {
+                            pos++;
+
+                            if (pos < json.size()) {
+                                result.push_back(json[pos]);
+                                pos++;
+                            }
+                        }
+                        else {
+                            result.push_back(json[pos]);
+                            pos++;
+                        }
+                    }
+
+                    // Check if a closing double quote was found
+                    if (pos < json.size() && json[pos] == '"') {
+                        pos++;
+                    }
+                    else {
+                        throw std::runtime_error("Invalid string in JSON.");
+                    }
+                }
+                else {
+                    throw std::runtime_error("A string in JSON is expected.");
+                }
+
+                return result;
+            }
+
+            std::map<std::string, std::string> parse_object(const std::string& json, size_t& pos) {
+                std::map<std::string, std::string> result;
+                if (json[pos] == '{') {
+                    pos++;
+                    skip_whitespace(json, pos);
+                    if (json[pos] == '}') {
+                        pos++;
+                        return result;
+                    }
+                    while (pos < json.size()) {
+                        std::string key = parse_string(json, pos);
+                        skip_whitespace(json, pos);
+                        if (pos < json.size() && json[pos] == ':') {
+                            pos++;
+                            skip_whitespace(json, pos);
+                            std::string value = parse_string(json, pos);
+                            result[key] = value;
+                            skip_whitespace(json, pos);
+                            if (pos < json.size() && json[pos] == ',') {
+                                pos++;
+                            }
+                            else if (pos < json.size() && json[pos] == '}') {
+                                pos++;
+                                break;
+                            }
+                            else {
+                                throw std::runtime_error("Incorrect object format in JSON.");
+                            }
+                        }
+                        else {
+                            throw std::runtime_error("A colon is expected in a JSON object.");
+                        }
+                    }
+                }
+                else {
+                    throw std::runtime_error("Expected object in JSON.");
+                }
+                return result;
+            }
+
+            std::vector<std::string> parse_array(const std::string& json, size_t& pos) {
+                std::vector<std::string> result;
+                if (json[pos] == '[') {
+                    pos++;
+                    skip_whitespace(json, pos);
+                    if (json[pos] == ']') {
+                        pos++;
+                        return result;
+                    }
+                    while (pos < json.size()) {
+                        std::string value = parse_string(json, pos);
+                        result.push_back(value);
+                        skip_whitespace(json, pos);
+                        if (pos < json.size() && json[pos] == ',') {
+                            pos++;
+                        }
+                        else if (pos < json.size() && json[pos] == ']') {
+                            pos++;
+                            break;
+                        }
+                        else {
+                            throw std::runtime_error("Incorrect array format in JSON.");
+                        }
+                    }
+                }
+                else {
+                    throw std::runtime_error("Array in JSON expected.");
+                }
+                return result;
+            }
+
+            void json_parse(const std::string& filename) {
+                std::ifstream file(filename);
+                if (!file.is_open()) {
+                    throw std::runtime_error("Failed to open file.");
+                }
+
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+                std::string contents = buffer.str();
+
+                JSON json;
+
+                try {
+                    size_t pos = 0;
+                    skip_whitespace(contents, pos);
+                    if (pos < contents.size()) {
+                        if (contents[pos] == '{') {
+                            json.object.pairs = parse_object(contents, pos);
+                        }
+                        else if (contents[pos] == '[') {
+                            json.object.objects["array"] = parse_array(contents, pos);
+                        }
+                        else {
+                            throw std::runtime_error("Incorrect JSON file format.");
+                        }
+                        skip_whitespace(contents, pos);
+                        if (pos < contents.size()) {
+                            throw std::runtime_error("Incorrect JSON file format.");
+                        }
+                    }
+                    else {
+                        throw std::runtime_error("Empty JSON file.");
+                    }
+
+                    std::cout << "Result of parsing JSON file:\n";
+                    std::string json_string = json.json_to_string();
+                    std::cout << json_string << std::endl;
+                }
+                catch (const std::exception& e) {
+                    throw std::runtime_error("Failed to parse JSON file. Error: " + std::string(e.what()));
+                }
+            }
+
             // Create a JSON array
             JSONArray create_json_array() {
                 JSONArray array;
                 return array;
             }
         };
-    }
-}
+    } // namespace jsonh
+} // namespace skyue
