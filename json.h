@@ -33,7 +33,6 @@ namespace skyue {
             std::string& operator[](const std::string& key) {
                 return object.pairs[key];
             }
-
             // Convert the JSON object to a string
             std::string json_to_string() const {
                 std::string indent(indent_spaces, ' ');
@@ -48,7 +47,6 @@ namespace skyue {
                 result += "\n}";
                 return result;
             }
-
 
             // Save the JSON object to a file
             void json_to_file(const std::string& filename) const {
@@ -92,61 +90,61 @@ namespace skyue {
                     pos++;
                 }
             }
-
             std::string parse_string(const std::string& json, size_t& pos) {
                 std::string result;
 
-                if (json[pos] == '"') {
-                    pos++;
+								if (json[pos] != '"') {
+									throw std::runtime_error("A string in JSON is expected.");
+								}
 
-                    while (pos < json.size() && json[pos] != '"') {
-                        if (json[pos] == '\\') {
-                            pos++;
+								pos++;
 
-                            if (pos < json.size()) {
-                                result.push_back(json[pos]);
-                                pos++;
-                            }
-                        }
-                        else {
-                            result.push_back(json[pos]);
-                            pos++;
-                        }
-                    }
+								while (pos < json.size() && json[pos] != '"') {
+									if (json[pos] == '\\') {
+										pos++;
 
-                    // Check if a closing double quote was found
-                    if (pos < json.size() && json[pos] == '"') {
-                        pos++;
-                    }
-                    else {
-                        throw std::runtime_error("Invalid string in JSON.");
-                    }
-                }
-                else {
-                    throw std::runtime_error("A string in JSON is expected.");
-                }
+										if (pos < json.size()) {
+											result.push_back(json[pos]);
+											pos++;
+										}
+									}
+									else {
+										result.push_back(json[pos]);
+										pos++;
+									}
+								}
 
-                return result;
-            }
+								if (pos >= json.size() || json[pos] != '"') {
+									throw std::runtime_error("Invalid string in JSON.");
+								}
+
+								pos++;
+
+								return result;
+						}
 
             std::map<std::string, std::string> parse_object(const std::string& json, size_t& pos) {
                 std::map<std::string, std::string> result;
                 if (json[pos] == '{') {
                     pos++;
                     skip_whitespace(json, pos);
+
                     if (json[pos] == '}') {
                         pos++;
                         return result;
                     }
+
                     while (pos < json.size()) {
                         std::string key = parse_string(json, pos);
                         skip_whitespace(json, pos);
                         if (pos < json.size() && json[pos] == ':') {
                             pos++;
                             skip_whitespace(json, pos);
+
                             std::string value = parse_string(json, pos);
                             result[key] = value;
                             skip_whitespace(json, pos);
+
                             if (pos < json.size() && json[pos] == ',') {
                                 pos++;
                             }
@@ -233,10 +231,6 @@ namespace skyue {
                     else {
                         throw std::runtime_error("Empty JSON file.");
                     }
-
-                    std::cout << "Result of parsing JSON file:\n";
-                    std::string json_string = json.json_to_string();
-                    std::cout << json_string << std::endl;
                 }
                 catch (const std::exception& e) {
                     throw std::runtime_error("Failed to parse JSON file. Error: " + std::string(e.what()));
@@ -245,8 +239,7 @@ namespace skyue {
 
             // Create a JSON array
             JSONArray create_json_array() {
-                JSONArray array;
-                return array;
+                return JSONArray();
             }
         };
     } // namespace jsonh
