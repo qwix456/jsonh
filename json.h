@@ -1,240 +1,415 @@
+#ifndef JSONH_HPP
+#define JSONH_HPP
+
+#include <iostream>
 #include <string>
 #include <map>
 #include <vector>
-#include <sstream>
-#include <stdexcept>
+#include <variant>
 #include <fstream>
 
-namespace skyue {
+namespace jsonh {
 
-    namespace jsonh {
+	// Forward declaration
+	class Value;
 
-        // Define some aliases for convenience
-        typedef std::map<std::string, std::string> JSONKeyValuePair;
-        typedef std::vector<std::string> JSONArray;
+	using JSON = Value;
 
-        // Define a struct for a JSON object
-        struct JSONObject {
-            JSONKeyValuePair pairs;
-            std::map<std::string, JSONArray> objects;
-        };
+	class Value {
+	public:
+		virtual ~Value() {}
+		virtual std::string stringify(int indentLevel = 0) const = 0;
+	};
 
-        // Define a class for a JSON object
-        class JSON {
-        private:
-            JSONObject object;
-            int indent_spaces = 0;
+	class Null : public Value {
+	public:
+		std::string stringify(int indentLevel = 0) const override {
+			return "null";
+		}
+	};
 
-        public:
-            // Constructor
-            JSON() {}
+	class Boolean : public Value {
+	public:
+		Boolean(bool value) : value(value) {}
 
-            // Overload the [] operator to allow access to key-value pairs
-            std::string& operator[](const std::string& key) {
-                return object.pairs[key];
-            }
-            // Convert the JSON object to a string
-            std::string json_to_string() const {
-                std::string result;
-								result.reserve(2 + object.pairs.size() * (4 + indent_spaces) + object.pairs.size() * 5);
-								result.push_back('{');
-								result.push_back('\n');
-								std::string indent(indent_spaces, ' ');
-								for (const auto& pair : object.pairs) {
-									result += indent + "\"" + pair.first + "\": \"" + pair.second + "\",\n";
-								}
-								if (!object.pairs.empty()) {
-									result.pop_back();
-									result.pop_back();
-								}
-								result.push_back('\n');
-								result.push_back('}');
-								return result;
-            }
+		std::string stringify(int indentLevel = 0) const override {
+			return value ? "true" : "false";
+		}
 
-            // Save the JSON object to a file
-            void json_to_file(const std::string& filename) const {
-                std::ofstream file(filename);
+	private:
+		bool value;
+	};
 
-                if (file.is_open()) {
-                    std::string indent(indent_spaces, ' ');
-                    file << "{\n";
-                    bool first_pair = true;
+	class Number : public Value {
+	public:
+		Number(int value) : value(value), isDouble(false) {}
+		Number(double value) : value(value), isDouble(true) {}
 
-                    for (const auto& pair : object.pairs) {
-                        if (!first_pair) {
-                            file << ",\n";
-                        }
-                        else {
-                            first_pair = false;
-                        }
-                        file << indent << "\"" << pair.first << "\": \"" << pair.second << "\"";
-                    }
+		std::string stringify(int indentLevel = 0) const override {
+			if (isDouble) {
+				return std::to_string(value);
+			}
+			else {
+				return std::to_string(static_cast<int>(value));
+			}
+		}
 
-                    file << "\n}";
-                    file.close();
-                }
-            }
+		static bool isInteger(const std::string& num) {
+			if (num.empty()) {
+				return false;
+			}
 
-            // Set the number of spaces for indentation
-            void indent(int spaces) {
-                indent_spaces = spaces;
-            }
+			size_t start = 0;
+			if (num[0] == '-' || num[0] == '+') {
+				start = 1;
+			}
 
-            /*
-            The skip_whitespace function skips all whitespace characters in the json string,
-            starting from position pos. This function uses a while loop to check each character,
-            starting from the current position, and increases the position until the
-            current character is a whitespace. After the function is completed, pos points to
-            the first non-whitespace character in the json string or to the end of the string
-            if all characters were whitespace.
-            */
-            void skip_whitespace(const std::string& json, size_t& pos) {
-                while (pos < json.size() && std::isspace(json[pos])) {
-                    pos++;
-                }
-            }
-            std::string parse_string(const std::string& json, size_t& pos) {
-                std::string result;
+			for (size_t i = start; i < num.size(); ++i) {
+				if (!isdigit(num[i])) {
+					return false;
+				}
+			}
 
-								if (json[pos] != '"') {
-									throw std::runtime_error("A string in JSON is expected.");
-								}
+			return true;
+		}
 
-								pos++;
+	private:
+		double value;
+		bool isDouble;
+	};
 
-								while (pos < json.size() && json[pos] != '"') {
-									if (json[pos] == '\\') {
-										pos++;
-									}
+	class String : public Value {
+	public:
+		String(const std::string& value) : value(value) {}
 
-									result.push_back(json[pos]);
-									pos++;
-								}
+		std::string stringify(int indentLevel = 0) const override {
+			return value;
+		}
 
-								if (pos >= json.size() || json[pos] != '"') {
-									throw std::runtime_error("Invalid string in JSON.");
-								}
+	private:
+		std::string value;
+	};
 
-								pos++;
+	class Object : public Value {
+	public:
+		void set(const std::string& key, Value* value) {
+			data[key] = value;
+		}
 
-								return result;
-						}
+		std::string stringify(int indentLevel = 0) const override {
+			std::string result = "{\n";
+			std::string indent(indentLevel + 1, ' ');
 
-            std::map<std::string, std::string> parse_object(const std::string& json, size_t& pos) {
-                std::map<std::string, std::string> result;
-                if (json[pos] == '{') {
-                    pos++;
-                    skip_whitespace(json, pos);
+			bool first = true;
+			for (const auto& entry : data) {
+				if (!first) {
+					result += ",\n";
+				}
+				result += indent + "\"" + entry.first + "\": ";
 
-                    if (json[pos] == '}') {
-                        pos++;
-                        return result;
-                    }
+				// Check if value is a string
+				if (dynamic_cast<String*>(entry.second)) {
+					result += "\"" + entry.second->stringify(indentLevel) + "\"";
+				}
+				else {
+					result += entry.second->stringify(indentLevel);
+				}
 
-                    while (pos < json.size()) {
-                        std::string key = parse_string(json, pos);
-                        skip_whitespace(json, pos);
+				first = false;
+			}
 
-												if (json[pos] != ':') {
-													throw std::runtime_error("A colon is expected in a JSON object.");
-												}
-												pos++;
-												skip_whitespace(json, pos);
+			result += "\n" + std::string(indentLevel > 0 ? indentLevel - indentLevel : 0, ' ') + "}";
+			return result;
+		}
 
-												std::string value = parse_string(json, pos);
-												result[key] = value;
-												skip_whitespace(json, pos);
+	private:
+		std::map<std::string, Value*> data;
+	};
 
-												if (json[pos] == ',') {
-													pos++;
-												}
-												else if (json[pos] == '}') {
-													pos++;
-													break;
-												}
-												else {
-													throw std::runtime_error("Incorrect object format in JSON.");
-												}
-										}
-								} else {
-									throw std::runtime_error("Expected object in JSON.");
-								}
-								return result;
-            }
+	class Array : public Value {
+	public:
+		void add(Value* value) {
+			values.push_back(value);
+		}
 
-            std::vector<std::string> parse_array(const std::string& json, size_t& pos) {
-              std::vector<std::string> result;
-              if (json[pos] != '[') {
-								throw std::runtime_error("Array in JSON expected.");
-							}
-							pos++;
-							skip_whitespace(json, pos);
-							if (json[pos] == ']') {
-								pos++;
-								return result;
-							}
-							while (pos < json.size()) {
-								std::string value = parse_string(json, pos);
-								result.push_back(value);
-								skip_whitespace(json, pos);
-								if (json[pos] == ',') {
-									pos++;
-								}
-								else if (json[pos] == ']') {
-									pos++;
-									break;
-								}
-								else {
-									throw std::runtime_error("Incorrect array format in JSON.");
-								}
-							}
-							return result;
-            }
+		std::string stringify(int indentLevel = 0) const override {
+			std::string result = "[\n";
+			std::string indent(indentLevel + 1, ' ');
 
-            void json_parse(const std::string& filename) {
-                std::ifstream file(filename);
-                if (!file.is_open()) {
-                    throw std::runtime_error("Failed to open file.");
-                }
+			bool first = true;
+			for (const auto& value : values) {
+				if (!first) {
+					result += ",\n";
+				}
 
-                std::stringstream buffer;
-                buffer << file.rdbuf();
-                std::string contents = buffer.str();
+				// Check if value is a string
+				if (dynamic_cast<String*>(value)) {
+					result += indent + "\"" + value->stringify(indentLevel) + "\"";
+				}
+				else {
+					result += indent + value->stringify(indentLevel);
+				}
 
-                JSON json;
+				first = false;
+			}
 
-                try {
-                    size_t pos = 0;
-                    skip_whitespace(contents, pos);
-                    if (pos < contents.size()) {
-                        if (contents[pos] == '{') {
-                            json.object.pairs = parse_object(contents, pos);
-                        }
-                        else if (contents[pos] == '[') {
-                            json.object.objects["array"] = parse_array(contents, pos);
-                        }
-                        else {
-                            throw std::runtime_error("Incorrect JSON file format.");
-                        }
-                        skip_whitespace(contents, pos);
-                        if (pos < contents.size()) {
-                            throw std::runtime_error("Incorrect JSON file format.");
-                        }
-                    }
-                    else {
-                        throw std::runtime_error("Empty JSON file.");
-                    }
-                }
-                catch (const std::exception& e) {
-                    throw std::runtime_error("Failed to parse JSON file. Error: " + std::string(e.what()));
-                }
-            }
+			result += "\n" + std::string(indentLevel > 0 ? indentLevel - indentLevel : 0, ' ') + "]";
+			return result;
+		}
 
-            // Create a JSON array
-            JSONArray create_json_array() {
-                return JSONArray();
-            }
-        };
-    } // namespace jsonh
-} // namespace skyue
+	private:
+		std::vector<Value*> values;
+	};
+
+	class Parser {
+	public:
+		static Value* parseValue(const std::string& content, size_t& index);
+
+		static Object* parseObject(const std::string& content, size_t& index);
+
+		static Array* parseArray(const std::string& content, size_t& index);
+
+		static String* parseString(const std::string& content, size_t& index);
+
+		static Number* parseNumber(const std::string& content, size_t& index);
+
+		static Value* parseBooleanOrNull(const std::string& content, size_t& index);
+
+		static Value* parseIndex(const std::string& content);
+
+		static Value* parse(const std::string& filename);
+
+		static void skipWhitespace(const std::string& content, size_t& index);
+
+		static void expectCharacter(char expected, char actual);
+	};
+
+	Value* Parser::parseIndex(const std::string& content) {
+		size_t index = 0;
+		return parseValue(content, index);
+	}
+
+	Value* Parser::parseValue(const std::string& content, size_t& index) {
+		char c = content[index];
+		if (c == '{') {
+			return parseObject(content, index);
+		}
+		else if (c == '[') {
+			return parseArray(content, index);
+		}
+		else if (c == '\"') {
+			return parseString(content, index);
+		}
+		else if (isdigit(c) || c == '-') {
+			return parseNumber(content, index);
+		}
+		else if (c == 't' || c == 'f' || c == 'n') {
+			return parseBooleanOrNull(content, index);
+		}
+		else {
+			throw std::runtime_error("Invalid JSON content");
+		}
+	}
+
+	Object* Parser::parseObject(const std::string& content, size_t& index) {
+		Object* obj = new Object();
+		index++; // skip opening brace
+
+		while (true) {
+			skipWhitespace(content, index);
+			char c = content[index];
+			if (c == '}') {
+				index++; // skip closing brace
+				break;
+			}
+			else if (c == ',') {
+				index++; // skip comma
+				continue;
+			}
+
+			std::string key = parseString(content, index)->stringify();
+			skipWhitespace(content, index);
+			expectCharacter(':', content[index++]); // shit code
+			skipWhitespace(content, index);
+			Value* value = parseValue(content, index);
+			obj->set(key, value);
+		}
+
+		return obj;
+	}
+
+	Array* Parser::parseArray(const std::string& content, size_t& index) {
+		Array* arr = new Array();
+		index++; // skip opening bracket
+
+		while (true) {
+			skipWhitespace(content, index);
+			char c = content[index];
+			if (c == ']') {
+				index++; // skip closing bracket
+				break;
+			}
+			else if (c == ',') {
+				index++; // skip comma
+				continue;
+			}
+
+			Value* value = parseValue(content, index);
+			arr->add(value);
+		}
+
+		return arr;
+	}
+
+	String* Parser::parseString(const std::string& content, size_t& index) {
+		std::string str = "";
+		expectCharacter('\"', content[index++]);
+
+		while (true) {
+			char c = content[index++];
+			if (c == '\"') {
+				break;
+			}
+			else if (c == '\\') {
+				char next = content[index++];
+				switch (next) {
+				case '\"':
+					str += '\"';
+					break;
+				case '\\':
+					str += '\\';
+					break;
+				case '/':
+					str += '/';
+					break;
+				case 'b':
+					str += '\b';
+					break;
+				case 'f':
+					str += '\f';
+					break;
+				case 'n':
+					str += '\n';
+					break;
+				case 'r':
+					str += '\r';
+					break;
+				case 't':
+					str += '\t';
+					break;
+				case 'u': {
+					std::string hex = content.substr(index, 4);
+					int codepoint = std::stoi(hex, 0, 16);
+					str += static_cast<char>(codepoint);
+					break;
+				}
+				default:
+					throw std::runtime_error("Invalid escape sequence in string");
+				}
+			}
+			else {
+				str += c;
+			}
+		}
+
+		return new String(str);
+	}
+
+	Number* Parser::parseNumber(const std::string& content, size_t& index) {
+		std::string num;
+
+		if (content[0] == '-') {
+			num += '-';
+			++index;
+		}
+
+		if (content[index] == '+') {
+			++index;
+		}
+
+		while (isdigit(content[index])) {
+			num += content[index];
+			++index;
+		}
+
+		if (content[index] == '.') {
+			num += '.';
+			++index;
+
+			while (isdigit(content[index])) {
+				num += content[index];
+				++index;
+			}
+		}
+
+		if (tolower(content[index]) == 'e') {
+			num += 'e';
+			++index;
+
+			if (content[index] == '-' || content[index] == '+') {
+				num += content[index];
+				++index;
+			}
+
+			while (isdigit(content[index])) {
+				num += content[index];
+				++index;
+			}
+		}
+
+		bool isInteger = Number::isInteger(num);
+		if (isInteger) {
+			return new Number(std::stoi(num));
+		}
+		else {
+			return new Number(std::stod(num));
+		}
+	}
+
+	Value* Parser::parseBooleanOrNull(const std::string& content, size_t& index) {
+		char c = content[index];
+		if (content.substr(index, 4) == "true") {
+			index += 4;
+			return new Boolean(true);
+		}
+		else if (content.substr(index, 5) == "false") {
+			index += 5;
+			return new Boolean(false);
+		}
+		else if (content.substr(index, 4) == "null") {
+			index += 4;
+			return new Null();
+		}
+		else {
+			throw std::runtime_error("Invalid boolean or null value");
+		}
+	}
+
+	Value* Parser::parse(const std::string& filename) {
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			throw std::runtime_error("Failed to open file");
+		}
+
+		std::string content((std::istreambuf_iterator<char>(file)),
+			std::istreambuf_iterator<char>());
+
+		Parser parser;
+		return parser.parseIndex(content);
+	}
+
+	void Parser::skipWhitespace(const std::string& content, size_t& index) {
+		while (index < content.size() && isspace(content[index])) {
+			index++;
+		}
+	}
+
+	void Parser::expectCharacter(char expected, char actual) {
+		if (expected != actual) {
+			throw std::runtime_error("Expected character '" + std::string(1, expected) + "' but found '" + std::string(1, actual) + "'");
+		}
+	}
+
+} // namespace jsonh
+
+#endif // JSONH_HPP
