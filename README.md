@@ -3,14 +3,24 @@ JSON Library written in C++
 
 # Example code
 ```cpp
-#include "json.h"
-
-using json_example = skyue::jsonh::JSON;
+#include <iostream>
+#include "jsonh.hpp"
 
 int main()
 {
-    json_example json;
-    json["test"] = "value";
-    json.json_to_file("test.json");
+	jsonh::Object obj;
+	obj.set("name", new jsonh::String("John"));
+	obj.set("age", new jsonh::Number(30));
+	obj.set("isStudent", new jsonh::Boolean(false));
+
+    std::ofstream outputFile("output.json");
+    if (outputFile.is_open()) {
+        outputFile << obj.stringify(5); // Indentation
+        outputFile.close();
+        std::cout << "JSON saved in 'output.json' file'" << std::endl;
+    }
+    else {
+        std::cerr << "Failed to open file for writing." << std::endl;
+    }
 }
 ```
