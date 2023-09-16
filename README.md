@@ -15,7 +15,7 @@ int main()
 
     std::ofstream outputFile("output.json");
     if (outputFile.is_open()) {
-        outputFile << obj.stringify(5); // Indentation
+        outputFile << obj.indent(5); // Indentation
         outputFile.close();
         std::cout << "JSON saved in 'output.json' file'" << std::endl;
     }
