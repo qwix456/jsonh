@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <variant>
 #include <fstream>
@@ -18,12 +19,12 @@ namespace jsonh {
 	class Value {
 	public:
 		virtual ~Value() {}
-		virtual std::string stringify(int indentLevel = 0) const = 0;
+		virtual std::string indent(int indentLevel = 0) const = 0;
 	};
 
 	class Null : public Value {
 	public:
-		std::string stringify(int indentLevel = 0) const override {
+		std::string indent(int indentLevel = 0) const override {
 			return "null";
 		}
 	};
@@ -32,8 +33,12 @@ namespace jsonh {
 	public:
 		Boolean(bool value) : value(value) {}
 
-		std::string stringify(int indentLevel = 0) const override {
+		std::string indent(int indentLevel = 0) const override {
 			return value ? "true" : "false";
+		}
+
+		bool get() const {
+			return value;
 		}
 
 	private:
@@ -45,13 +50,17 @@ namespace jsonh {
 		Number(int value) : value(value), isDouble(false) {}
 		Number(double value) : value(value), isDouble(true) {}
 
-		std::string stringify(int indentLevel = 0) const override {
+		std::string indent(int indentLevel = 0) const override {
 			if (isDouble) {
 				return std::to_string(value);
 			}
 			else {
 				return std::to_string(static_cast<int>(value));
 			}
+		}
+
+		double get() const {
+			return value;
 		}
 
 		static bool isInteger(const std::string& num) {
@@ -82,7 +91,11 @@ namespace jsonh {
 	public:
 		String(const std::string& value) : value(value) {}
 
-		std::string stringify(int indentLevel = 0) const override {
+		std::string indent(int indentLevel = 0) const override {
+			return value;
+		}
+
+		std::string get() const {
 			return value;
 		}
 
@@ -96,7 +109,15 @@ namespace jsonh {
 			data[key] = value;
 		}
 
-		std::string stringify(int indentLevel = 0) const override {
+		Value* get(const std::string& key) const {
+			auto it = data.find(key);
+			if (it != data.end()) {
+				return it->second;
+			}
+			return nullptr;
+		}
+
+		std::string indent(int indentLevel = 0) const override {
 			std::string result = "{\n";
 			std::string indent(indentLevel + 1, ' ');
 
@@ -109,10 +130,10 @@ namespace jsonh {
 
 				// Check if value is a string
 				if (dynamic_cast<String*>(entry.second)) {
-					result += "\"" + entry.second->stringify(indentLevel) + "\"";
+					result += "\"" + entry.second->indent(indentLevel) + "\"";
 				}
 				else {
-					result += entry.second->stringify(indentLevel);
+					result += entry.second->indent(indentLevel);
 				}
 
 				first = false;
@@ -123,7 +144,7 @@ namespace jsonh {
 		}
 
 	private:
-		std::map<std::string, Value*> data;
+		std::unordered_map<std::string, Value*> data;
 	};
 
 	class Array : public Value {
@@ -132,7 +153,11 @@ namespace jsonh {
 			values.push_back(value);
 		}
 
-		std::string stringify(int indentLevel = 0) const override {
+		std::vector<Value*> get() const {
+			return values;
+		}
+
+		std::string indent(int indentLevel = 0) const override {
 			std::string result = "[\n";
 			std::string indent(indentLevel + 1, ' ');
 
@@ -144,10 +169,10 @@ namespace jsonh {
 
 				// Check if value is a string
 				if (dynamic_cast<String*>(value)) {
-					result += indent + "\"" + value->stringify(indentLevel) + "\"";
+					result += indent + "\"" + value->indent(indentLevel) + "\"";
 				}
 				else {
-					result += indent + value->stringify(indentLevel);
+					result += indent + value->indent(indentLevel);
 				}
 
 				first = false;
@@ -227,7 +252,7 @@ namespace jsonh {
 				continue;
 			}
 
-			std::string key = parseString(content, index)->stringify();
+			std::string key = parseString(content, index)->indent();
 			skipWhitespace(content, index);
 			expectCharacter(':', content[index++]); // shit code
 			skipWhitespace(content, index);
@@ -317,13 +342,10 @@ namespace jsonh {
 
 	Number* Parser::parseNumber(const std::string& content, size_t& index) {
 		std::string num;
+		bool isDouble = false;
 
-		if (content[0] == '-') {
-			num += '-';
-			++index;
-		}
-
-		if (content[index] == '+') {
+		if (content[index] == '-' || content[index] == '+') {
+			num += content[index];
 			++index;
 		}
 
@@ -333,6 +355,7 @@ namespace jsonh {
 		}
 
 		if (content[index] == '.') {
+			isDouble = true;
 			num += '.';
 			++index;
 
@@ -357,26 +380,26 @@ namespace jsonh {
 			}
 		}
 
-		bool isInteger = Number::isInteger(num);
-		if (isInteger) {
-			return new Number(std::stoi(num));
+		if (isDouble) {
+			return new Number(std::stod(num));
 		}
 		else {
-			return new Number(std::stod(num));
+			return new Number(std::stoi(num));
 		}
 	}
 
 	Value* Parser::parseBooleanOrNull(const std::string& content, size_t& index) {
-		char c = content[index];
-		if (content.substr(index, 4) == "true") {
+		const std::string& subContent = content.substr(index);
+
+		if (subContent.compare(0, 4, "true") == 0) {
 			index += 4;
 			return new Boolean(true);
 		}
-		else if (content.substr(index, 5) == "false") {
+		else if (subContent.compare(0, 5, "false") == 0) {
 			index += 5;
 			return new Boolean(false);
 		}
-		else if (content.substr(index, 4) == "null") {
+		else if (subContent.compare(0, 4, "null") == 0) {
 			index += 4;
 			return new Null();
 		}
