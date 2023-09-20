@@ -117,6 +117,26 @@ namespace jsonh {
 			return nullptr;
 		}
 
+		std::string getString(const std::string& key) const {
+			Value* value = get(key);
+			if (value && dynamic_cast<String*>(value)) {
+				return dynamic_cast<String*>(value)->get();
+			}
+			return "";
+		}
+
+		int getInt(const std::string& key) const {
+			Value* value = get(key);
+			if (value && dynamic_cast<Number*>(value)) {
+				return dynamic_cast<Number*>(value)->get();
+			}
+			return 0.0;
+		}
+
+		bool hasKey(const std::string& key) const {
+			return data.find(key) != data.end();
+		}
+
 		std::string indent(int indentLevel = 0) const override {
 			std::string result = "{\n";
 			std::string indent(indentLevel + 1, ' ');
@@ -153,8 +173,35 @@ namespace jsonh {
 			values.push_back(value);
 		}
 
-		std::vector<Value*> get() const {
-			return values;
+		Value* get(size_t index) const {
+			if (index < values.size()) {
+				return values[index];
+			}
+			return nullptr;
+		}
+
+		std::string getString(size_t index) const {
+			Value* value = get(index);
+			if (value && dynamic_cast<String*>(value)) {
+				return dynamic_cast<String*>(value)->get();
+			}
+			return "";
+		}
+
+		int getInt(size_t index) const {
+			Value* value = get(index);
+			if (value && dynamic_cast<Number*>(value)) {
+				return static_cast<int>(dynamic_cast<Number*>(value)->get());
+			}
+			return 0;
+		}
+
+		double getDouble(size_t index) const {
+			Value* value = get(index);
+			if (value && dynamic_cast<Number*>(value)) {
+				return dynamic_cast<Number*>(value)->get();
+			}
+			return 0.0;
 		}
 
 		std::string indent(int indentLevel = 0) const override {
@@ -185,6 +232,15 @@ namespace jsonh {
 	private:
 		std::vector<Value*> values;
 	};
+
+	void jsonToFile(const JSON& json, const std::string& filename) {
+		std::ofstream file(filename);
+		if (!file.is_open()) {
+			throw std::runtime_error("Failed to open file for writing: " + filename);
+		}
+		file << json.indent();
+		file.close();
+	}
 
 	class Parser {
 	public:
@@ -433,6 +489,10 @@ namespace jsonh {
 		}
 	}
 
+	JSON& jsonFromFile(const std::string& filename) {
+		Parser parser;
+		return *parser.parse(filename);
+	}
 } // namespace jsonh
 
 #endif // JSONH_HPP
