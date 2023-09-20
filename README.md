@@ -1,5 +1,5 @@
 # jsonh
-JSON Library written in C++
+My C++ JSON library
 
 # Example code
 ```cpp
