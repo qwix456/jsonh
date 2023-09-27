@@ -128,9 +128,22 @@ namespace jsonh {
 		int getInt(const std::string& key) const {
 			Value* value = get(key);
 			if (value && dynamic_cast<Number*>(value)) {
+				return static_cast<int>(dynamic_cast<Number*>(value)->get());
+			}
+			return 0;
+		}
+
+		double getDouble(const std::string& key) const {
+			Value* value = get(key);
+			if (value && dynamic_cast<Number*>(value)) {
 				return dynamic_cast<Number*>(value)->get();
 			}
 			return 0.0;
+		}
+
+		Object* getObject(const std::string& key) const {
+			Value* value = get(key);
+			return dynamic_cast<Object*>(value);
 		}
 
 		bool hasKey(const std::string& key) const {
@@ -489,9 +502,9 @@ namespace jsonh {
 		}
 	}
 
-	JSON& jsonFromFile(const std::string& filename) {
+	Value* jsonFromFile(const std::string& filename) {
 		Parser parser;
-		return *parser.parse(filename);
+		return parser.parse(filename);
 	}
 } // namespace jsonh
 
