@@ -412,6 +412,7 @@ namespace jsonh {
 					std::string hex = content.substr(index, 4);
 					int codepoint = std::stoi(hex, 0, 16);
 					str += static_cast<char>(codepoint);
+					index += 4;
 					break;
 				}
 				default:
