@@ -109,6 +109,18 @@ namespace jsonh {
 			data[key] = value;
 		}
 
+		Value*& operator[](const std::string& key) {
+			return data[key];
+		}
+
+		const Value* operator[](const std::string& key) const {
+			auto it = data.find(key);
+			if (it != data.end()) {
+				return it->second;
+			}
+			return nullptr;
+		}
+
 		Value* get(const std::string& key) const {
 			auto it = data.find(key);
 			if (it != data.end()) {
@@ -161,12 +173,13 @@ namespace jsonh {
 				}
 				result += indent + "\"" + entry.first + "\": ";
 
-				// Check if value is a string
-				if (dynamic_cast<String*>(entry.second)) {
-					result += "\"" + entry.second->indent(indentLevel) + "\"";
-				}
-				else {
-					result += entry.second->indent(indentLevel);
+				if (entry.second != nullptr) {
+					if (dynamic_cast<String*>(entry.second)) {
+						result += "\"" + entry.second->indent(indentLevel) + "\"";
+					}
+					else {
+						result += entry.second->indent(indentLevel);
+					}
 				}
 
 				first = false;
@@ -226,13 +239,17 @@ namespace jsonh {
 				if (!first) {
 					result += ",\n";
 				}
-
-				// Check if value is a string
-				if (dynamic_cast<String*>(value)) {
-					result += indent + "\"" + value->indent(indentLevel) + "\"";
+					
+				if (value != nullptr) {
+					if (dynamic_cast<String*>(value)) {
+						result += indent + "\"" + value->indent(indentLevel) + "\"";
+					}
+					else {
+						result += indent + value->indent(indentLevel);
+					}
 				}
 				else {
-					result += indent + value->indent(indentLevel);
+					result += indent + "null";
 				}
 
 				first = false;
