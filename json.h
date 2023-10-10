@@ -1,12 +1,7 @@
-#ifndef JSONH_HPP
-#define JSONH_HPP
-
-#include <iostream>
 #include <string>
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include <variant>
 #include <fstream>
 
 namespace jsonh {
@@ -525,5 +520,3 @@ namespace jsonh {
 		return parser.parse(filename);
 	}
 } // namespace jsonh
-
-#endif // JSONH_HPP
