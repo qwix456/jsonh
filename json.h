@@ -4,9 +4,8 @@
 #include <vector>
 #include <fstream>
 
-namespace jsonh {
+namespace jsonh 
 
-	// Forward declaration
 	class Value;
 
 	using JSON = Value;
@@ -258,7 +257,7 @@ namespace jsonh {
 		std::vector<Value*> values;
 	};
 
-	void jsonToFile(const JSON& json, const std::string& filename) {
+	void json_to_file(const JSON& json, const std::string& filename) {
 		std::ofstream file(filename);
 		if (!file.is_open()) {
 			throw std::runtime_error("Failed to open file for writing: " + filename);
